@@ -337,6 +337,11 @@ int cw1200_wow_resume(struct ieee80211_hw *hw)
 	/* Disable IRQ wake */
 	priv->sbus_ops->power_mgmt(priv->sbus_priv, false);
 
+	/* Scan.lock must be released before BH is resumed other way
+	 * in case when BSS_LOST command arrived the processing of the
+	 * command will be delayed. */
+	up(&priv->scan.lock);
+
 	/* Resume BH thread */
 	WARN_ON(cw1200_bh_resume(priv));
 
@@ -369,9 +374,6 @@ int cw1200_wow_resume(struct ieee80211_hw *hw)
 
 	/* Unlock datapath */
 	wsm_unlock_tx(priv);
-
-	/* Unlock scan */
-	up(&priv->scan.lock);
 
 	/* Unlock configuration mutex */
 	mutex_unlock(&priv->conf_mutex);

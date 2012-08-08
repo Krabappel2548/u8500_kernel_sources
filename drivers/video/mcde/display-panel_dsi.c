@@ -220,6 +220,14 @@ exit:
 	return ret;
 }
 
+#ifdef CONFIG_DEBUG_FS
+int panel_execute_cmd_extern(struct panel_device *dev,
+						const struct panel_reg *preg)
+{
+	return panel_execute_cmd(dev, preg);
+}
+#endif
+
 static int panel_set_power_mode_internal(struct mcde_display_device *ddev,
 					struct panel_record *rd,
 					enum mcde_display_power_mode power_mode)
@@ -445,6 +453,9 @@ static int __devinit read_device_descriptor_block(struct panel_device *dev,
 
 	/* Start by reading DDBs once */
 	for (try = 0; try < DDB_READ_NBR_RETRIES ; try++) {
+		/* Continue even if we cannot send this command */
+		(void)mcde_dsi_set_max_pkt_size(chnl);
+
 		rd_len = MCDE_MAX_DCS_READ;
 		ret = mcde_dsi_dcs_read(chnl, DCS_CMD_READ_DDB_START,
 					&data[0], &rd_len);
@@ -720,9 +731,6 @@ static int __devinit panel_probe(struct mcde_display_device *ddev)
 								"channel\n");
 			goto free_and_exit;
 		}
-		ret = mcde_dsi_set_max_pkt_size(chnl);
-		if (ret)
-			goto free_and_exit;
 
 		ret = display_plug_n_play(dev, chnl, pdata, rd);
 		if (!ret)

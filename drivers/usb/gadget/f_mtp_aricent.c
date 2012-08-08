@@ -164,6 +164,7 @@ enum MTP_IOCTL_CMD {
 	enCmdSendMtpEvent,
 	enCmdNotifyAppEvent,
 	enCmdCancelTransaction,
+	enCmdSendNullPacket,
 
 };
 
@@ -1790,6 +1791,70 @@ static int MtpIoctl(struct inode *pInode, struct file *pFile,
 		pDevice->m_uReadCount = 0;
 		pDevice->m_nError = 0;
 		break;
+	}
+	case enCmdSendNullPacket: {
+		int nRetVal = -EIO;
+		struct usb_request *pUsbRequest = NULL;
+		int nTempRetVal = 0;
+
+		do {
+			/* Wait till we get an idle tx request
+			 * to use or error state
+			 */
+			nTempRetVal = wait_event_interruptible(
+				pDevice->m_Writewq,
+				((pUsbRequest = PullUsbRequest(pDevice,
+					&pDevice->m_TxIdle)) ||
+				pDevice->m_nError));
+
+			if (nTempRetVal < 0) {
+				nRetVal = nTempRetVal;
+
+				MTPERROR(pDevice,
+					"MtpIoctl:enCmdSendNullPacket Error "
+					"wait_event_interruptible() %d\n",
+					nTempRetVal);
+				break;
+			}
+
+			if (pUsbRequest != NULL) {
+
+				/* Assigning 0 bytes size */
+				pUsbRequest->length = 0;
+
+				/* Submitting usbrequest-transfer
+				 * data to BulkIn EP
+				 */
+				nTempRetVal = usb_ep_queue(pDevice->m_pEpIn,
+					pUsbRequest, GFP_ATOMIC);
+
+				if (nTempRetVal < 0) {
+					MTPERROR(pDevice,
+						"MtpIoctl:enCmdSendNullPacket"
+						" usb_ep_queue error "
+						"nTempRetVal-%d\n",
+						nTempRetVal);
+
+					pDevice->m_nError = 1;
+					break;
+				}
+
+				/* zero this so we don't try to
+				 * free it on error exit
+				 */
+				pUsbRequest = NULL;
+
+				nRetVal = 0;
+				MTPDBG(pDevice, "NULL packet sent success\n");
+			}
+		} while (0);
+
+		/* Add unused UsbRequest to the m_TxIdle queue */
+		if (NULL != pUsbRequest)
+			PushUsbRequest(pDevice, &pDevice->m_TxIdle,
+				pUsbRequest);
+
+		return nRetVal;
 	}
 	default:
 		MTPDBG(pDevice, "No IOCTL Handler returning -EINVAL\n");

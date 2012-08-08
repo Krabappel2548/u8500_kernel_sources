@@ -1,6 +1,7 @@
 /* drivers/misc/lm3561.c
  *
  * Copyright (C) 2012 Sony Ericsson Mobile Communications AB.
+ * Copyright (C) 2012 Sony Mobile Communications AB.
  *
  * Author: Angela Fox <angela.fox@sonyericsson.com>
  *
@@ -18,6 +19,7 @@
 #include <linux/lm3561.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
+
 /*
  *************************************************************************
  * - Value declaration
@@ -97,19 +99,28 @@
 struct led_limits {
 	unsigned long torch_current_min;
 	unsigned long torch_current_max;
+	unsigned long torch_current_step;
 	unsigned long flash_current_min;
 	unsigned long flash_current_max;
+	unsigned long flash_current_step;
 	unsigned long flash_duration_min;
 	unsigned long flash_duration_max;
 };
 
+/*
+ * Min/Max/step torch/flash values and also min/max duration values.
+ * TODO! Room for improvement! Some values also defined in macros in:
+ * /vendor/semc/hardware/libcameralight/chips/lm3561_flash.c!
+ */
 const struct led_limits lm3561_limits = {
 	18000,
 	149600,
+	18800,
 	36000,
 	600000,
+	37600,
 	32000,
-	1024000
+	1024000,
 };
 
 struct lm3561_drv_data {
@@ -168,9 +179,9 @@ static int lm3561_set_reg_data(struct lm3561_drv_data *data,
 	}
 
 	/* For debug-purpose, get info on what is written to chip */
-	dev_info(&data->client->dev,
+	dev_dbg(&data->client->dev,
 		"%s(): addr:0x%02x, value:0x%02x\n",
-					__func__, addr, value);
+		__func__, addr, value);
 
 	result = i2c_smbus_write_i2c_block_data(
 					data->client,
@@ -283,8 +294,9 @@ static int lm3561_get_torch_current(struct lm3561_drv_data *data,
 	if (result)
 		return result;
 
-	*get_current = ((reg_current & 0x07) + 1)
-		* lm3561_limits.torch_current_min * leds;
+	*get_current = ((reg_current & LM3561_TORCH_BRIGHT_MASK)
+		* lm3561_limits.torch_current_step * leds
+		+ lm3561_limits.torch_current_min * leds);
 
 	return result;
 }
@@ -317,8 +329,8 @@ static int lm3561_set_torch_current(struct lm3561_drv_data *data,
 
 	/* Convert current value to register value (Round-down fraction) */
 	current_bits_value =
-		request_current	/
-		(lm3561_limits.torch_current_min * leds)  - 1;
+		(request_current - lm3561_limits.torch_current_min * leds)
+		/ (lm3561_limits.torch_current_step * leds);
 
 	current_bits_value = (current_bits_value << data->torch_current_shift)
 		| current_bits_value;
@@ -341,8 +353,9 @@ static int lm3561_get_flash_current(struct lm3561_drv_data *data,
 	if (result)
 		return result;
 
-	*get_current = ((reg_current & 0x0f) + 1)
-		* lm3561_limits.flash_current_min * leds;
+	*get_current = ((reg_current & LM3561_FLASH_BRIGHT_MASK)
+		* lm3561_limits.flash_current_step * leds
+		+ lm3561_limits.flash_current_min * leds);
 
 	return result;
 }
@@ -372,8 +385,8 @@ static int lm3561_set_flash_current(struct lm3561_drv_data *data,
 	}
 	/* Convert current value to register value (Round-down fraction) */
 	current_bits_value =
-		flash_current /
-		(lm3561_limits.flash_current_min * leds) - 1;
+		(flash_current - lm3561_limits.flash_current_min * leds)
+		/ (lm3561_limits.flash_current_step * leds);
 
 	current_bits_value = (current_bits_value << data->flash_current_shift)
 		| current_bits_value;
@@ -418,7 +431,7 @@ static int lm3561_set_flash_duration(struct lm3561_drv_data *data,
 
 		if (flash_duration < lm3561_limits.flash_duration_min)
 			flash_duration = lm3561_limits.flash_duration_min;
-		else if (flash_duration < lm3561_limits.flash_duration_max)
+		else if (flash_duration > lm3561_limits.flash_duration_max)
 			flash_duration = lm3561_limits.flash_duration_max;
 
 		dev_err(&data->client->dev,
@@ -537,7 +550,7 @@ static ssize_t attr_torch_enable_store(struct device *dev,
 
 	if (1 < enable) {
 		dev_err(&data->client->dev,
-			"%s(): 1 < enable, enable=%d\n",
+			"%s(): 1 < enable, enable=%lu\n",
 				__func__, enable);
 		return -EINVAL;
 	}
@@ -755,7 +768,7 @@ static ssize_t attr_flash_sync_enable_store(struct device *dev,
 
 	if (1 < enable) {
 		dev_err(&data->client->dev,
-			"%s(): 1 < enable, enable=%d\n",
+			"%s(): 1 < enable, enable=%lu\n",
 				__func__, enable);
 		return -EINVAL;
 	}
@@ -841,7 +854,7 @@ static int __devinit lm3561_probe(struct i2c_client *client,
 	struct lm3561_drv_data *data;
 	int result;
 
-	dev_dbg(&client->dev, "%s\n", __func__);
+	dev_info(&client->dev, "%s\n", __func__);
 
 	if (!pdata) {
 		dev_err(&data->client->dev,

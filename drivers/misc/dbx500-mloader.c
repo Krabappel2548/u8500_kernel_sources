@@ -21,6 +21,7 @@
 #include <linux/io.h>
 
 #include <mach/mloader-dbx500.h>
+#include <mach/prcmu-db8500.h>
 #include <linux/mloader.h>
 
 #define DEVICE_NAME "dbx500_mloader_fw"
@@ -189,6 +190,9 @@ static long mloader_fw_ioctl(struct file *filp, unsigned int cmd,
 
 	switch (cmd) {
 	case ML_UPLOAD:
+		printk(KERN_INFO "[%s]: executing ML_UPLOAD changes prcmu"
+			"comm timeouts for 20s\n", __func__);
+		prcmu_temp_set_comm_timeout(2000, 20000);
 		ret = mloader_fw_upload();
 		break;
 	case ML_GET_NBIMAGES:
@@ -197,6 +201,9 @@ static long mloader_fw_ioctl(struct file *filp, unsigned int cmd,
 		break;
 	case ML_GET_DUMPINFO: {
 		struct dump_image *dump_images;
+		printk(KERN_INFO "[%s]: executing GET_DUMPINFO changes prcmu "
+			"comm timeouts for 20s\n", __func__);
+		prcmu_temp_set_comm_timeout(2000, 20000);
 		dump_images = kzalloc(mloader_priv->pdata->nr_areas
 				* sizeof(struct dump_image), GFP_ATOMIC);
 		mloader_fw_dumpinfo(dump_images);

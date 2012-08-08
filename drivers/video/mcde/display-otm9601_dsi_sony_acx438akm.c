@@ -59,6 +59,29 @@ static const struct panel_reg standby_to_intermediate_cmds[] = {
 	{CMD_DCS, 0x35, 1, {0x00} },
 	/* Set TE Scan Line */
 	{CMD_DCS, 0x44, 2, {0x01, 0x87} },
+
+	/* Aladdin mode settings */
+	{CMD_DCS, 0x55, 1, {0x07} },
+	{CMD_DCS, 0x50, 1, {0x88} },
+	{CMD_DCS, 0x57, 1, {0x6D} },
+	{CMD_DCS, 0x58, 1, {0xFF} },
+	{CMD_DCS, 0x59, 1, {0x01} },
+	{CMD_DCS, 0x5A, 1, {0x02} },
+	{CMD_DCS, 0x5B, 1, {0x00} },
+	{CMD_DCS, 0x5C, 1, {0x06} },
+	{CMD_DCS, 0x5D, 1, {0x51} },
+	{CMD_DCS, 0x60, 1, {0x08} },
+	{CMD_DCS, 0x61, 1, {0x25} },
+	{CMD_DCS, 0x62, 1, {0x40} },
+	{CMD_DCS, 0x63, 1, {0x05} },
+	{CMD_DCS, 0x64, 1, {0x40} },
+	{CMD_DCS, 0x65, 1, {0x64} },
+	{CMD_DCS, 0x66, 1, {0x59} },
+	{CMD_DCS, 0x67, 1, {0x02} },
+	{CMD_DCS, 0x69, 1, {0x80} },
+	{CMD_DCS, 0x6A, 1, {0x80} },
+	{CMD_DCS, 0x6B, 1, {0x80} },
+
 	/* Spec: B) Exit Sleep */
 	{CMD_DCS, DCS_CMD_EXIT_SLEEP_MODE, 1, {0} },
 	/* Spec says wait > 10 ms (for RAM to be ready), another 83 ms */
@@ -146,7 +169,8 @@ static ssize_t panel_store_set_mode(struct device *dev,
 		else
 			mode = 0x04;
 	else
-		mode = val;
+		/* All indoor modes will be set to use free control mode */
+		mode = 0x07;
 
 	mcde_dsi_dcs_write(chnl, 0x55, &mode, 1);
 

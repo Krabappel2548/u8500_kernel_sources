@@ -161,6 +161,43 @@ void stm_musb_context(int enable)
 EXPORT_SYMBOL(stm_musb_context);
 #endif
 
+/*
+- The Vbus information is sent by the Phy to the controller
+  through RxCMD.
+- Vbus information sent through RxCMD has to be masked
+- If bit[6:3]=8, system is in ACA-RID-A then
+	- In ULPI register, mask VBUSVLD by writing before setting
+	  the session bit of the MUSB
+		* Register ULPI Vbuscontrol (offset - 0x70)  = 0x2
+		* In Interface control register @0x08 = x60
+		* In OTG control register @0x0B = x80
+	- On it_link_update (x0E2B bit7) notification and link_status <> x8,
+	  SW must reset previous settings:
+		* Register ULPI Vbuscontrol (offset - 0x70)  = 0
+		* In Interface control register @0x09 = x60
+		* In OTG control register @0x0C = x80
+*/
+int musb_rid_a_wa(u8 state)
+{
+	unsigned int busctl ;
+	struct musb *musb = musb_status;
+	switch(state)
+	{
+		case 0:
+			busctl = musb_read_ulpi_buscontrol(musb->mregs);
+			busctl |= 0x02;
+			musb_write_ulpi_buscontrol(musb->mregs, busctl);
+			ulpi_write_register(musb, 0x08, 0x60);
+			ulpi_write_register(musb, 0x0B, 0x80);
+			break;
+		case 1:
+			musb_write_ulpi_buscontrol(musb->mregs, 0);
+			ulpi_write_register(musb, 0x09, 0x60);
+			ulpi_write_register(musb, 0x0C, 0x80);
+			break;
+	}
+}
+
 /**
  * musb_set_session() - Start the USB session
  *

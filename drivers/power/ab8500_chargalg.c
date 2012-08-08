@@ -168,6 +168,7 @@ struct ab8500_chargalg_events {
 	bool ac_cv_active;
 	bool usb_cv_active;
 	bool vbus_collapsed;
+	bool force_usb_charging_suspend;
 };
 
 /**
@@ -357,13 +358,15 @@ static int ab8500_chargalg_check_charger_connection(struct ab8500_chargalg *di)
 				ab8500_chargalg_state_to(di, STATE_NORMAL_INIT);
 			}
 		} else if ((di->chg_info.conn_chg & USB_CHG) &&
-			!di->susp_status.usb_suspended) {
+			!(di->susp_status.usb_suspended ||
+			di->events.force_usb_charging_suspend)) {
 			dev_dbg(di->dev, "Charging source is USB\n");
 			di->chg_info.charger_type = USB_CHG;
 			ab8500_chargalg_state_to(di, STATE_NORMAL_INIT);
 		} else if (di->chg_info.conn_chg &&
 			(di->susp_status.ac_suspended ||
-			di->susp_status.usb_suspended)) {
+			di->susp_status.usb_suspended ||
+			di->events.force_usb_charging_suspend)) {
 			dev_dbg(di->dev, "Charging is suspended\n");
 			di->chg_info.charger_type = NO_CHG;
 			ab8500_chargalg_state_to(di, STATE_SUSPENDED_INIT);
@@ -1186,8 +1189,22 @@ static int ab8500_chargalg_get_ext_psy_data(struct device *dev, void *data)
 					di->events.vbus_ovv = false;
 					di->events.usb_wd_expired = false;
 					break;
+				case POWER_SUPPLY_HEALTH_UNKNOWN:
+				if (!di->events.force_usb_charging_suspend) {
+					di->susp_status.suspended_change = true;
+					di->events.force_usb_charging_suspend =
+						true;
+				}
+					break;
 				default:
 					break;
+				}
+
+				if (ret.intval != POWER_SUPPLY_HEALTH_UNKNOWN &&
+					di->events.force_usb_charging_suspend) {
+					di->events.force_usb_charging_suspend =
+						false;
+					di->susp_status.suspended_change = true;
 				}
 			default:
 				break;
@@ -1464,7 +1481,8 @@ static void ab8500_chargalg_algorithm(struct ab8500_chargalg *di)
 	case STATE_SUSPENDED_INIT:
 		if (di->susp_status.ac_suspended)
 			ab8500_chargalg_ac_en(di, false, 0, 0);
-		if (di->susp_status.usb_suspended)
+		if (di->susp_status.usb_suspended ||
+			di->events.force_usb_charging_suspend)
 			ab8500_chargalg_usb_en(di, false, 0, 0);
 		ab8500_chargalg_stop_safety_timer(di);
 		ab8500_chargalg_stop_maintenance_timer(di);

@@ -77,6 +77,10 @@ config MCDE_DISPLAY_R61529_DSI_SEIKO_RJ248
 	bool "Seiko RJ248 display panel"
 	depends on MCDE_DISPLAY_PANEL_DSI
 
+config MCDE_DISPLAY_R61529_DSI_HITACHI_TX09D115VM
+	bool "Hitachi TX09D115VM display panel"
+	depends on MCDE_DISPLAY_PANEL_DSI
+
 config MCDE_DISPLAY_OTM9601_DSI_SONY_ACX438AKM
 	bool "Sony ACX438AKM display panel"
 	depends on MCDE_DISPLAY_PANEL_DSI

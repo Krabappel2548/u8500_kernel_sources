@@ -227,7 +227,7 @@ static int copy_memref_to_kernel(struct tee_session *ts,
 	}
 
 	if (ku_buffer->op->shm[memref].flags & TEEC_MEM_INPUT) {
-		memcpy(ts->vaddr[memref],
+		copy_from_user(ts->vaddr[memref],
 		       ku_buffer->op->shm[memref].buffer,
 		       ku_buffer->op->shm[memref].size);
 	}

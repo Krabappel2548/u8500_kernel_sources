@@ -45,6 +45,13 @@ static const struct panel_reg standby_to_deep_standby_cmds[] = {
 };
 
 static const struct panel_reg on_to_standby_cmds[] = {
+	/* LEDPWM */
+	/* LEDPWM - Manufacturer command protect */
+	{CMD_GEN, 0xB0, 3, {0x04, 0x00, 0x00} },
+	/* LEDPWM - BLC function OFF */
+	{CMD_GEN, 0xB8, 3, {0x00, 0x00, 0x00} },
+	/* LEDPWM - Manufacturer command protect end */
+	{CMD_GEN, 0xB0, 3, {0x03, 0x00, 0x00} },
 	{CMD_DCS, DCS_CMD_SET_DISPLAY_OFF, 1, {0} },
 	{CMD_DCS, DCS_CMD_ENTER_SLEEP_MODE, 1, {0} },
 	{CMD_WAIT_MS, 0, 1, {73} }, /* Spec says > 72 ms */
@@ -56,8 +63,14 @@ static const struct panel_reg standby_to_intermediate_cmds[] = {
 	{CMD_DCS, DCS_CMD_EXIT_SLEEP_MODE, 1,  {0} },
 	{CMD_WAIT_MS, 0, 1, {127} }, /* Spec says > 126 ms */
 	/* LEDPWM */
-	/* TODO: Add PWM here */
-
+	/* LEDPWM - Manufacturer command protect */
+	{CMD_GEN, 0xB0, 3, {0x04, 0x00, 0x00} },
+	/* LEDPWM - BLC20 function ON */
+	{CMD_GEN, 0xB8, 11, {0x01, 0x09, 0x09, 0xFF, 0xFF, 0xD8,
+				0xD8, 0x02, 0x18, 0x90, 0x90} },
+	{CMD_DCS, 0xB9, 3, {0x00, 0xFF, 0x02} },
+	/* LEDPWM - Manufacturer command protect end */
+	{CMD_GEN, 0xB0, 3, {0x03, 0x00, 0x00} },
 	/* TE */
 	{CMD_DCS, 0x35, 1, {0x00} }, /* TE on */
 	/* Set TE Scan Line */

@@ -424,6 +424,75 @@ static int result_show(struct seq_file *s, void *unused)
 	return 0;
 }
 
+static int reset(struct seq_file *s, void *unused)
+{
+	struct mcde_display_device *ddev = s->private;
+	struct device *dev;
+	int ret;
+
+	if (!ddev || !&ddev->dev) {
+		pr_err("%s: no device\n", __func__);
+		goto exit;
+	}
+	dev = &ddev->dev;
+
+	if (ddev->platform_reset) {
+		ret = ddev->platform_reset(ddev, 1);
+		if (ret)
+			goto exit;
+		msleep(11);
+		ret = ddev->platform_reset(ddev, 0);
+		if (ret)
+			goto exit;
+		mdelay(1);
+		ret = ddev->platform_reset(ddev, 1);
+		if (ret)
+			goto exit;
+		msleep(21);
+		dev_info(dev, "%s: Display reset performed.\n", __func__);
+	}
+exit:
+	return 0;
+}
+
+static int restart(struct seq_file *s, void *unused)
+{
+	struct mcde_display_device *ddev = s->private;
+	struct panel_device *pdev = container_of(ddev, struct panel_device,
+									base);
+	struct panel_record *rd;
+	struct device *dev;
+	int ret;
+
+	if (!ddev || !&ddev->dev) {
+		pr_err("%s: no device\n", __func__);
+		goto exit;
+	}
+	dev = &ddev->dev;
+	rd = dev_get_drvdata(dev);
+
+	if (rd->panel->pinfo->standby_to_intermediate) {
+		ret = panel_execute_cmd_extern(pdev,
+				rd->panel->pinfo->standby_to_intermediate);
+		if (ret)
+			goto exit;
+		if (rd->panel->pinfo->intermediate_to_on) {
+			ret = panel_execute_cmd_extern(pdev,
+					rd->panel->pinfo->intermediate_to_on);
+			if (ret)
+				goto exit;
+		}
+	} else if (rd->panel->pinfo->standby_to_on) {
+		ret = panel_execute_cmd_extern(pdev,
+				rd->panel->pinfo->standby_to_on);
+		if (ret)
+			goto exit;
+	}
+	dev_info(dev, "%s: Display restart performed.\n", __func__);
+exit:
+	return 0;
+}
+
 static int info_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, info_show, inode->i_private);
@@ -489,6 +558,32 @@ static const struct file_operations result_fops = {
 	.release	= single_release,
 };
 
+static int reset_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, reset, inode->i_private);
+}
+
+static const struct file_operations reset_fops = {
+	.owner		= THIS_MODULE,
+	.open		= reset_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static int restart_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, restart, inode->i_private);
+}
+
+static const struct file_operations restart_fops = {
+	.owner		= THIS_MODULE,
+	.open		= restart_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
 void __devinit panel_create_debugfs(struct mcde_display_device *ddev)
 {
 	struct device *dev;
@@ -534,6 +629,19 @@ void __devinit panel_create_debugfs(struct mcde_display_device *ddev)
 		if (!debugfs_create_file("result", S_IRUGO, rd->dir, ddev,
 								&result_fops)) {
 			dev_err(dev, "%s: failed to create dbgfs result file\n",
+								__func__);
+			return;
+		}
+		if (!debugfs_create_file("reset", S_IRUGO, rd->dir, ddev,
+								&reset_fops)) {
+			dev_err(dev, "%s: failed to create dbgfs reset file\n",
+								__func__);
+			return;
+		}
+		if (!debugfs_create_file("restart", S_IRUGO, rd->dir, ddev,
+							&restart_fops)) {
+			dev_err(dev,
+				"%s: failed to create dbgfs restart file\n",
 								__func__);
 			return;
 		}

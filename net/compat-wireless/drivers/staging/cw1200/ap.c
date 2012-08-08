@@ -2,6 +2,7 @@
  * mac80211 STA and AP API for mac80211 ST-Ericsson CW1200 drivers
  *
  * Copyright (c) 2010, ST-Ericsson
+ * Copyright (C) 2012 Sony Mobile Communications AB.
  * Author: Dmitry Tarnyagin <dmitry.tarnyagin@stericsson.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -395,8 +396,15 @@ void cw1200_bss_info_changed(struct ieee80211_hw *dev,
 			priv->join_dtim_period = info->dtim_period;
 			priv->beacon_int = info->beacon_int;
 
-			/* Associated: kill join timeout */
-			cancel_delayed_work_sync(&priv->join_timeout);
+			/* Associated: kill join timeout if it's pending
+			   If it's not pending any more we got the unjoin
+			   after mac80211 associated and we need to drop the
+			   connection. */
+			if (!cancel_delayed_work_sync(&priv->join_timeout)) {
+				ap_printk(KERN_DEBUG "Not joined. Drop "
+					  "connection\n");
+				ieee80211_connection_loss(vif);
+			}
 
 			rcu_read_lock();
 			if (info->bssid)

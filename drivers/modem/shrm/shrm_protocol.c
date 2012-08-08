@@ -1084,7 +1084,7 @@ irqreturn_t ac_read_notif_0_irq_handler(int irq, void *ctrlr)
 	if (check_modem_in_reset()) {
 		dev_err(shrm->dev, "%s:Modem state reset or unknown.\n",
 				__func__);
-		return IRQ_HANDLED;
+		return IRQ_NONE;
 	}
 
 	shm_ac_read_0_tasklet.data = (unsigned long)shrm;
@@ -1097,7 +1097,7 @@ irqreturn_t ac_read_notif_0_irq_handler(int irq, void *ctrlr)
 				__func__);
 		preempt_enable();
 		local_irq_restore(flags);
-		return IRQ_HANDLED;
+		return IRQ_NONE;
 	}
 
 	if (!get_host_accessport_val()) {
@@ -1106,7 +1106,7 @@ irqreturn_t ac_read_notif_0_irq_handler(int irq, void *ctrlr)
 				&shm_dev->shm_mod_reset_req);
 		preempt_enable();
 		local_irq_restore(flags);
-		return IRQ_HANDLED;
+		return IRQ_NONE;
 	}
 	/* Clear the interrupt */
 	writel((1 << GOP_COMMON_AC_READ_NOTIFICATION_BIT),
@@ -1136,7 +1136,7 @@ irqreturn_t ac_read_notif_1_irq_handler(int irq, void *ctrlr)
 	if (check_modem_in_reset()) {
 		dev_err(shrm->dev, "%s:Modem state reset or unknown.\n",
 				__func__);
-		return IRQ_HANDLED;
+		return IRQ_NONE;
 	}
 
 	shm_ac_read_1_tasklet.data = (unsigned long)shrm;
@@ -1149,7 +1149,7 @@ irqreturn_t ac_read_notif_1_irq_handler(int irq, void *ctrlr)
 				__func__);
 		preempt_enable();
 		local_irq_restore(flags);
-		return IRQ_HANDLED;
+		return IRQ_NONE;
 	}
 
 	if (!get_host_accessport_val()) {
@@ -1158,7 +1158,7 @@ irqreturn_t ac_read_notif_1_irq_handler(int irq, void *ctrlr)
 				&shm_dev->shm_mod_reset_req);
 		preempt_enable();
 		local_irq_restore(flags);
-		return IRQ_HANDLED;
+		return IRQ_NONE;
 	}
 	/* Clear the interrupt */
 	writel((1 << GOP_AUDIO_AC_READ_NOTIFICATION_BIT),
@@ -1180,7 +1180,7 @@ irqreturn_t ca_msg_pending_notif_0_irq_handler(int irq, void *ctrlr)
 	if (check_modem_in_reset()) {
 		dev_err(shrm->dev, "%s:Modem state reset or unknown.\n",
 				__func__);
-		return IRQ_HANDLED;
+		return IRQ_NONE;
 	}
 
 	tasklet_schedule(&shm_ca_0_tasklet);
@@ -1192,7 +1192,7 @@ irqreturn_t ca_msg_pending_notif_0_irq_handler(int irq, void *ctrlr)
 				__func__);
 		preempt_enable();
 		local_irq_restore(flags);
-		return IRQ_HANDLED;
+		return IRQ_NONE;
 	}
 
 	if (!get_host_accessport_val()) {
@@ -1201,7 +1201,7 @@ irqreturn_t ca_msg_pending_notif_0_irq_handler(int irq, void *ctrlr)
 				&shm_dev->shm_mod_reset_req);
 		preempt_enable();
 		local_irq_restore(flags);
-		return IRQ_HANDLED;
+		return IRQ_NONE;
 	}
 	/* Clear the interrupt */
 	writel((1 << GOP_COMMON_CA_MSG_PENDING_NOTIFICATION_BIT),
@@ -1223,7 +1223,7 @@ irqreturn_t ca_msg_pending_notif_1_irq_handler(int irq, void *ctrlr)
 	if (check_modem_in_reset()) {
 		dev_err(shrm->dev, "%s:Modem state reset or unknown.\n",
 				__func__);
-		return IRQ_HANDLED;
+		return IRQ_NONE;
 	}
 
 	tasklet_schedule(&shm_ca_1_tasklet);
@@ -1235,7 +1235,7 @@ irqreturn_t ca_msg_pending_notif_1_irq_handler(int irq, void *ctrlr)
 				__func__);
 		preempt_enable();
 		local_irq_restore(flags);
-		return IRQ_HANDLED;
+		return IRQ_NONE;
 	}
 
 	if (!get_host_accessport_val()) {
@@ -1244,7 +1244,7 @@ irqreturn_t ca_msg_pending_notif_1_irq_handler(int irq, void *ctrlr)
 				&shm_dev->shm_mod_reset_req);
 		preempt_enable();
 		local_irq_restore(flags);
-		return IRQ_HANDLED;
+		return IRQ_NONE;
 	}
 	/* Clear the interrupt */
 	writel((1<<GOP_AUDIO_CA_MSG_PENDING_NOTIFICATION_BIT),

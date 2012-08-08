@@ -38,12 +38,6 @@
 #include <video/hdmi.h>
 #include <linux/firmware.h>
 
-#define AV8100_USE_STATIC_FIRMWARE
-
-#ifdef AV8100_USE_STATIC_FIRMWARE
-#include "av8100_fw.h"
-#endif
-
 #define AV8100_FW_FILENAME "av8100.fw"
 #define CUT_STR_0 "2.1"
 #define CUT_STR_1 "2.2"
@@ -2810,7 +2804,7 @@ int av8100_hdmi_put(void)
 		adev->wakelock_taken = true;
 
 		/* Allow for a a nice close before powerdown */
-		wake_lock_timeout(&adev->wakelock, 2 * HZ);
+		wake_lock(&adev->wakelock);
 	}
 
 	if (adev->usr_cnt == 0)
@@ -3084,9 +3078,7 @@ int av8100_download_firmware(enum interface_type if_type)
 	u8 wa;
 	u8 ra;
 	struct av8100_platform_data *pdata;
-#ifndef AV8100_USE_STATIC_FIRMWARE
 	const struct firmware *fw_file;
-#endif
 	u8 *fw_buff;
 	int fw_bytes;
 	struct av8100_device *adev;
@@ -3112,7 +3104,6 @@ int av8100_download_firmware(enum interface_type if_type)
 	av8100_set_state(adev, AV8100_OPMODE_INIT);
 	pdata = adev->dev->platform_data;
 
-#ifndef AV8100_USE_STATIC_FIRMWARE
 	/* Request firmware */
 	if (request_firmware(&fw_file,
 			       AV8100_FW_FILENAME,
@@ -3121,7 +3112,6 @@ int av8100_download_firmware(enum interface_type if_type)
 		retval = -EFAULT;
 		goto av8100_download_firmware_err2;
 	}
-#endif
 
 	/* Master clock timing, running */
 	retval = av8100_reg_stby_w(AV8100_STANDBY_CPD_LOW,
@@ -3169,13 +3159,8 @@ int av8100_download_firmware(enum interface_type if_type)
 	msleep(AV8100_WAITTIME_10MS);
 
 	/* Prepare firmware data */
-#ifdef AV8100_USE_STATIC_FIRMWARE
-	fw_bytes = AV8100_FW_SIZE;
-	fw_buff = av8100_fw_buff;
-#else
 	fw_bytes = fw_file->size;
 	fw_buff = (u8 *)fw_file->data;
-#endif
 	dev_dbg(adev->dev, "fw size:%d\n", fw_bytes);
 
 	i2c = adev->config.client;
@@ -3316,9 +3301,7 @@ int av8100_download_firmware(enum interface_type if_type)
 	if (uc != 0x1)
 		dev_dbg(adev->dev, "UC is not ready\n");
 
-#ifndef AV8100_USE_STATIC_FIRMWARE
 	release_firmware(fw_file);
-#endif
 
 	if (adev->chip_version != 1) {
 		char *cut_str;
@@ -3370,9 +3353,7 @@ av8100_download_firmware_end:
 	return 0;
 
 av8100_download_firmware_err:
-#ifndef AV8100_USE_STATIC_FIRMWARE
 	release_firmware(fw_file);
-#endif
 
 av8100_download_firmware_err2:
 	UNLOCK_AV8100_FWDL;

@@ -58,6 +58,7 @@ static bool find_active_thresholds(struct abx500_temp *data)
 		"cancel deferred job (if it exists)"
 		"and reset temp monitor delay\n");
 	cancel_delayed_work_sync(&data->work);
+	data->work_active = false;
 	return false;
 }
 
@@ -66,10 +67,12 @@ static inline void schedule_monitor(struct abx500_temp *data)
 	unsigned long delay_in_jiffies;
 	delay_in_jiffies = msecs_to_jiffies(data->gpadc_monitor_delay);
 	schedule_delayed_work(&data->work, delay_in_jiffies);
+	data->work_active = true;
 }
 
 static inline void gpadc_monitor_exit(struct abx500_temp *data)
 {
+	data->work_active = false;
 	cancel_delayed_work_sync(&data->work);
 }
 
@@ -180,6 +183,7 @@ static void gpadc_monitor(struct work_struct *work)
 	}
 	delay_in_jiffies = msecs_to_jiffies(data->gpadc_monitor_delay);
 	schedule_delayed_work(&data->work, delay_in_jiffies);
+	data->work_active = true;
 }
 
 static ssize_t set_temp_monitor_delay(struct device *dev,
@@ -642,12 +646,32 @@ static int __devexit abx500_temp_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static int abx500_temp_suspend(struct platform_device *pdev,
+			       pm_message_t state)
+{
+	struct abx500_temp *data = platform_get_drvdata(pdev);
+
+	cancel_delayed_work_sync(&data->work);
+	return 0;
+}
+
+static int abx500_temp_resume(struct platform_device *pdev)
+{
+	struct abx500_temp *data = platform_get_drvdata(pdev);
+
+	if (data->work_active)
+		schedule_monitor(data);
+	return 0;
+}
+
 /* No action required in suspend/resume, thus the lack of functions */
 static struct platform_driver abx500_temp_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = "abx500-temp",
 	},
+	.suspend = abx500_temp_suspend,
+	.resume = abx500_temp_resume,
 	.probe = abx500_temp_probe,
 	.remove = __devexit_p(abx500_temp_remove),
 };

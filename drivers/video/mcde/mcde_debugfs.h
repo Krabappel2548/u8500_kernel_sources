@@ -16,7 +16,8 @@
 
 int mcde_debugfs_create(struct device *dev);
 int mcde_debugfs_channel_create(u8 chnl_id, struct mcde_chnl_state *chnl);
-int mcde_debugfs_overlay_create(u8 chnl_id, u8 ovly_id);
+int mcde_debugfs_overlay_create(u8 chnl_id, u8 ovly_id,
+						struct mcde_ovly_state *ovly);
 
 void mcde_debugfs_channel_update(u8 chnl_id);
 void mcde_debugfs_overlay_update(u8 chnl_id, u8 ovly_id);

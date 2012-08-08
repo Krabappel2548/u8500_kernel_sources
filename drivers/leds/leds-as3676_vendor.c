@@ -194,6 +194,7 @@ struct as3676_data {
 	int ldo_count;
 	u8 als_control_backup;
 	u8 als_result_backup;
+	u8 in_shutdown;
 };
 
 struct as3676_als_group {
@@ -620,11 +621,14 @@ static const struct dev_pm_ops as3676_pm = {
 };
 #endif
 
-
 static void as3676_shutdown(struct i2c_client *client)
 {
 	struct as3676_data *data = i2c_get_clientdata(client);
 	int i;
+
+	AS3676_LOCK();
+	data->in_shutdown = 1;
+	AS3676_UNLOCK();
 
 	dev_info(&client->dev, "Shutting down AS3676\n");
 
@@ -816,6 +820,8 @@ static void as3676_set_brightness(struct as3676_data *data,
 	u8 prev_value = AS3676_READ_REG(led->reg);
 
 	AS3676_LOCK();
+	if (data->in_shutdown && value != LED_OFF)
+		goto no_action;
 	value = (value * led->pled->max_current_uA + 38250/2) / 38250;
 	if ((prev_value == LED_OFF) != (value == LED_OFF)) {
 		/* we must switch on/off */
@@ -825,6 +831,7 @@ static void as3676_set_brightness(struct as3676_data *data,
 	} else {
 		AS3676_WRITE_REG(led->reg, value);
 	}
+no_action:
 	AS3676_UNLOCK();
 }
 

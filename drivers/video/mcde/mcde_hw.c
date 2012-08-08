@@ -98,6 +98,7 @@ static void wait_for_flow_disabled(struct mcde_chnl_state *chnl);
 #define DSI_READ_DELAY 5
 #define DSI_READ_NBR_OF_RETRIES 2
 #define MCDE_FLOWEN_MAX_TRIAL 60
+#define MAX_CONSECUTIVE_CHNL0_TIMEOUTS 2
 
 #define CLK_MCDE	"mcde"
 
@@ -119,6 +120,7 @@ static struct clk *clock_dpi;
 static struct clk *clock_mcde;
 static u8 mcde_is_enabled;
 static struct delayed_work hw_timeout_work;
+static u32 chnl0_timeouts;
 
 static struct mutex mcde_hw_lock;
 static inline void mcde_lock(const char *func, int line)
@@ -1126,6 +1128,11 @@ static struct mcde_chnl_state *find_channel_by_dsilink(int link)
 
 static inline void mcde_handle_vsync(struct mcde_chnl_state *chnl)
 {
+	if (chnl->id == 0 && chnl0_timeouts != 0) {
+		dev_info(&mcde_dev->dev,
+			"%s: vsync received, chnl0_timeouts = %d\n",
+			__func__, chnl0_timeouts);
+	}
 	if (!chnl->port.update_auto_trig &&
 		chnl->port.sync_src == MCDE_SYNCSRC_TE0 &&
 		chnl->port.type == MCDE_PORTTYPE_DSI &&
@@ -1141,6 +1148,9 @@ static inline void mcde_handle_vcmp(struct mcde_chnl_state *chnl)
 		atomic_inc(&chnl->vcmp_cnt);
 		if (chnl->state == CHNLSTATE_STOPPING)
 			set_channel_state_atomic(chnl, CHNLSTATE_STOPPED);
+		else
+			dev_warn(&mcde_dev->dev, "%s: Not in STOPPING state, "
+				"current state = %d\n", __func__, chnl->state);
 		wake_up_all(&chnl->vcmp_waitq);
 
 		if (chnl->port.update_auto_trig &&
@@ -1155,6 +1165,11 @@ static inline void mcde_handle_vcmp(struct mcde_chnl_state *chnl)
 		}
 	}
 	chnl->even_vcmp = !chnl->even_vcmp;
+	if (chnl->id == 0 && chnl0_timeouts != 0) {
+		dev_info(&mcde_dev->dev, "%s: vcmp received, reset timeout "
+							"counter\n", __func__);
+		chnl0_timeouts = 0;
+	}
 }
 
 static void handle_dsi_irq(struct mcde_chnl_state *chnl, int i)
@@ -1276,6 +1291,32 @@ static int set_channel_state_atomic(struct mcde_chnl_state *chnl,
 	}
 }
 
+static void handle_chnl0_timeout(struct mcde_chnl_state *chnl)
+{
+	int ret;
+	u32 data = 0;
+	int len;
+
+	if (chnl0_timeouts >= MAX_CONSECUTIVE_CHNL0_TIMEOUTS) {
+		dev_info(&mcde_dev->dev,
+			"%s: Nbr timeouts since last successful frame = %d\n",
+			__func__, chnl0_timeouts);
+		/* Something is wrong. Check display */
+		/* Read Display Signal Mode reg (0x0E) */
+		len = 1;
+		ret = mcde_dsi_dcs_read(chnl, 0x0E, &data, &len);
+		dev_info(&mcde_dev->dev,
+			"%s: Read 0x0E ret = %d, data = 0x%x\n",
+			__func__, ret, data);
+		/* Read First display id byte (0xA1) */
+		len = 1;
+		ret = mcde_dsi_dcs_read(chnl, 0xA1, &data, &len);
+		dev_info(&mcde_dev->dev,
+			"%s: Read 0xA1 ret = %d, data = 0x%x\n",
+			__func__, ret, data);
+	}
+}
+
 /* LOCKING: mcde_hw_lock */
 static int set_channel_state_sync(struct mcde_chnl_state *chnl,
 							enum chnl_state state)
@@ -1297,10 +1338,12 @@ static int set_channel_state_sync(struct mcde_chnl_state *chnl,
 			chnl->state == CHNLSTATE_STOPPED ||
 			chnl->state == CHNLSTATE_IDLE,
 						msecs_to_jiffies(CHNL_TIMEOUT));
-		if (WARN_ON_ONCE(!ret))
+		if (WARN_ON_ONCE(!ret)) {
 			dev_warn(&mcde_dev->dev, "Wait for channel timeout "
 						"(chnl=%d, curr=%d, new=%d)\n",
 						chnl->id, chnl->state, state);
+			chnl0_timeouts++;
+		}
 		chnl_state = chnl->state;
 	}
 
@@ -1322,6 +1365,8 @@ static int wait_for_vcmp(struct mcde_chnl_state *chnl)
 						msecs_to_jiffies(CHNL_TIMEOUT));
 	return ret;
 }
+
+#define DSI_DPHY_TINIT 2000
 
 static int update_channel_static_registers(struct mcde_chnl_state *chnl)
 {
@@ -1551,6 +1596,14 @@ static int update_channel_static_registers(struct mcde_chnl_state *chnl)
 				dsi_wfld(port->link, DSI_CMD_MODE_CTL, IF2_ID,
 					port->phy.dsi.virt_id);
 		}
+		/*
+		 * DPHY spec:
+		 * After power-up, the Slave side PHY shall be initialized when
+		 * the Master PHY drives a Stop State (LP-11) for a period
+		 * longer then TINIT. The first Stop state longer than the
+		 * specified TINIT is called the Initialization period.
+		 */
+		udelay(DSI_DPHY_TINIT);
 	}
 
 	if (port->type == MCDE_PORTTYPE_DPI)
@@ -2514,6 +2567,7 @@ int mcde_dsi_dcs_read(struct mcde_chnl_state *chnl,
 	bool ok = false;
 	bool error = false, ack_with_err;
 	u8 nbr_of_retries = DSI_READ_NBR_OF_RETRIES;
+	u32 sts;
 
 	if (*len > MCDE_MAX_DCS_READ || chnl->port.type != MCDE_PORTTYPE_DSI)
 		return -EINVAL;
@@ -2573,8 +2627,21 @@ int mcde_dsi_dcs_read(struct mcde_chnl_state *chnl,
 		*len = min(*len, rdsize);
 		memcpy(data, &rddat, *len);
 	} else {
+		sts = dsi_rreg(link, DSI_DIRECT_CMD_STS);
 		dev_err(&mcde_dev->dev, "DCS read failed, err=%d, sts=%X\n",
-				error, dsi_rreg(link, DSI_DIRECT_CMD_STS));
+				error, sts);
+		if (sts == 1 && chnl->id == 0) {
+			dev_err(&mcde_dev->dev, "Stop DSI clock lanes\n");
+			dsi_wfld(link, DSI_MCTL_MAIN_PHY_CTL, FORCE_STOP_MODE,
+									true);
+			dsi_wfld(link, DSI_MCTL_MAIN_PHY_CTL,
+						CLOCK_FORCE_STOP_MODE, true);
+			udelay(20);
+			dsi_wfld(link, DSI_MCTL_MAIN_PHY_CTL, FORCE_STOP_MODE,
+									false);
+			dsi_wfld(link, DSI_MCTL_MAIN_PHY_CTL,
+						CLOCK_FORCE_STOP_MODE, false);
+		}
 		ret = -EIO;
 	}
 
@@ -2614,6 +2681,8 @@ int mcde_dsi_set_max_pkt_size(struct mcde_chnl_state *chnl)
 		mcde_unlock(__func__, __LINE__);
 		return -EIO;
 	}
+	if (!chnl->formatter_updated)
+		(void)update_channel_static_registers(chnl);
 
 	set_channel_state_sync(chnl, CHNLSTATE_DSI_WRITE);
 
@@ -3256,6 +3325,10 @@ int mcde_chnl_update(struct mcde_chnl_state *chnl,
 
 	mcde_unlock(__func__, __LINE__);
 
+
+	if (chnl->id == 0)
+		handle_chnl0_timeout(chnl);
+
 	dev_vdbg(&mcde_dev->dev, "%s exit with ret %d\n", __func__, ret);
 
 	return ret;
@@ -3632,6 +3705,102 @@ regulator_esram_err:
 	return ret;
 }
 
+void mcde_hw_chnl_print(struct mcde_chnl_state *chnl)
+{
+	struct device *dev = &mcde_dev->dev;
+
+	dev_info(dev, "enabled = %d\n", chnl->enabled);
+	dev_info(dev, "reserved = %d\n", chnl->reserved);
+	dev_info(dev, "id = %d\n", chnl->id);
+	dev_info(dev, "fifo = %d\n", chnl->fifo);
+	dev_info(dev, "reserved = %d\n", chnl->reserved);
+	dev_info(dev, "struct port = %p\n", &chnl->port);
+	dev_info(dev, "struct ovly0 = %p\n", chnl->ovly0);
+	dev_info(dev, "struct ovly1 = %p\n", chnl->ovly1);
+	dev_info(dev, "struct cfg = %p\n", chnl->cfg);
+	dev_info(dev, "state = %d\n", chnl->state);
+	dev_info(dev, "state_waitq = %p\n", &chnl->state_waitq);
+	dev_info(dev, "vcmp_waitq = %p\n", &chnl->vcmp_waitq);
+	dev_info(dev, "vcmp_cnt = %d\n", atomic_read(&chnl->vcmp_cnt));
+	dev_info(dev, "oled_color_conversion = %d\n",
+						chnl->oled_color_conversion);
+	dev_info(dev, "struct auto_sync_timer = %p\n", &chnl->auto_sync_timer);
+	dev_info(dev, "struct dsi_te_timer = %p\n", &chnl->dsi_te_timer);
+	dev_info(dev, "struct clk_dsi_lp = %p\n", chnl->clk_dsi_lp);
+	dev_info(dev, "struct clk_dsi_hs = %p\n", chnl->clk_dsi_hs);
+	dev_info(dev, "power_mode = %d\n", chnl->power_mode);
+	dev_info(dev, "map_r = %p\n", &chnl->map_r);
+	dev_info(dev, "map_g = %p\n", &chnl->map_g);
+	dev_info(dev, "map_b = %p\n", &chnl->map_b);
+	dev_info(dev, "palette_enable = %d\n", chnl->palette_enable);
+	dev_info(dev, "synchronized_update = %d\n", chnl->synchronized_update);
+	dev_info(dev, "struct vmode = %p\n", &chnl->vmode);
+	dev_info(dev, "rotation = %d\n", chnl->rotation);
+	dev_info(dev, "rotbuf1 = 0x%x\n", chnl->rotbuf1);
+	dev_info(dev, "rotbuf2 = 0x%x\n", chnl->rotbuf2);
+	dev_info(dev, "struct rgb_2_ycbcr = %p\n", &chnl->rgb_2_ycbcr);
+	dev_info(dev, "struct ycbcr_2_rgb = %p\n", &chnl->ycbcr_2_rgb);
+	dev_info(dev, "struct transform = %p\n", chnl->transform);
+	dev_info(dev, "struct oled_transform = %p\n", chnl->oled_transform);
+	dev_info(dev, "blend_ctrl = 0x%x\n", chnl->blend_ctrl);
+	dev_info(dev, "blend_en = 0x%x\n", chnl->blend_en);
+	dev_info(dev, "alpha_blend = 0x%x\n", chnl->alpha_blend);
+	dev_info(dev, "struct regs = %p\n", &chnl->regs);
+	dev_info(dev, "struct col_regs = %p\n", &chnl->col_regs);
+	dev_info(dev, "struct tv_regs = %p\n", &chnl->tv_regs);
+	dev_info(dev, "struct oled_regs = %p\n", &chnl->oled_regs);
+	dev_info(dev, "vcmp_per_field = %d\n", chnl->vcmp_per_field);
+	dev_info(dev, "even_vcmp = %d\n", chnl->even_vcmp);
+	dev_info(dev, "formatter_updated = %d\n", chnl->formatter_updated);
+	dev_info(dev, "esram_is_enabled = %d\n", chnl->esram_is_enabled);
+}
+
+void mcde_hw_ovly_print(struct mcde_ovly_state *ovly)
+{
+	struct device *dev = &mcde_dev->dev;
+
+	dev_info(dev, "inuse = %d\n", ovly->inuse);
+	dev_info(dev, "idx = %d\n", ovly->idx);
+	dev_info(dev, "struct chnl = %p\n", ovly->chnl);
+	dev_info(dev, "dirty = %d\n", ovly->dirty);
+	dev_info(dev, "dirty_buf = %d\n", ovly->dirty_buf);
+	dev_info(dev, "paddr = 0x%x\n", ovly->paddr);
+	dev_info(dev, "stride = %d\n", ovly->stride);
+	dev_info(dev, "pix_fmt = %d\n", ovly->pix_fmt);
+	dev_info(dev, "src_x = %d\n", ovly->src_x);
+	dev_info(dev, "src_y = %d\n", ovly->src_y);
+	dev_info(dev, "dst_x = %d\n", ovly->dst_x);
+	dev_info(dev, "dst_y = %d\n", ovly->dst_y);
+	dev_info(dev, "dst_z = %d\n", ovly->dst_z);
+	dev_info(dev, "w = %d\n", ovly->w);
+	dev_info(dev, "h = %d\n", ovly->h);
+	dev_info(dev, "alpha_source = %d\n", ovly->alpha_source);
+	dev_info(dev, "alpha_value = %d\n", ovly->alpha_value);
+
+	dev_info(dev, "regs.enabled = %d\n", ovly->regs.enabled);
+	dev_info(dev, "regs.dirty = %d\n", ovly->regs.dirty);
+	dev_info(dev, "regs.dirty_buf = %d\n", ovly->regs.dirty_buf);
+	dev_info(dev, "regs.ch_id = %d\n", ovly->regs.ch_id);
+	dev_info(dev, "regs.baseaddress0 = 0x%x\n", ovly->regs.baseaddress0);
+	dev_info(dev, "regs.baseaddress1 = 0x%x\n", ovly->regs.baseaddress1);
+	dev_info(dev, "regs.bits_per_pixel = %d\n", ovly->regs.bits_per_pixel);
+	dev_info(dev, "regs.bpp = %d\n", ovly->regs.bpp);
+	dev_info(dev, "regs.bgr = %d\n", ovly->regs.bgr);
+	dev_info(dev, "regs.bebo = %d\n", ovly->regs.bebo);
+	dev_info(dev, "regs.opq = %d\n", ovly->regs.opq);
+	dev_info(dev, "regs.col_conv = %d\n", ovly->regs.col_conv);
+	dev_info(dev, "regs.alpha_source = %d\n", ovly->regs.alpha_source);
+	dev_info(dev, "regs.alpha_value = %d\n", ovly->regs.alpha_value);
+	dev_info(dev, "regs.pixoff = %d\n", ovly->regs.pixoff);
+	dev_info(dev, "regs.ppl = %d\n", ovly->regs.ppl);
+	dev_info(dev, "regs.lpf = %d\n", ovly->regs.lpf);
+	dev_info(dev, "regs.cropx = %d\n", ovly->regs.cropx);
+	dev_info(dev, "regs.cropy = %d\n", ovly->regs.cropy);
+	dev_info(dev, "regs.xpos = %d\n", ovly->regs.xpos);
+	dev_info(dev, "regs.ypos = %d\n", ovly->regs.ypos);
+	dev_info(dev, "regs.z = %d\n", ovly->regs.z);
+}
+
 static void remove_clocks_and_power(struct platform_device *pdev)
 {
 	/* REVIEW: Release only if exist */
@@ -3730,9 +3899,9 @@ static void probe_hw(void)
 		channels[i].dsi_te_timer.data = i;
 
 		mcde_debugfs_channel_create(i, &channels[i]);
-		mcde_debugfs_overlay_create(i, 0);
+		mcde_debugfs_overlay_create(i, 0, channels[i].ovly0);
 		if (channels[i].ovly1)
-			mcde_debugfs_overlay_create(i, 1);
+			mcde_debugfs_overlay_create(i, 1, channels[i].ovly1);
 	}
 }
 

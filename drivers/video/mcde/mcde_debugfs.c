@@ -16,6 +16,9 @@
 #include <linux/debugfs.h>
 #include <linux/slab.h>
 #include <asm/page.h>
+#include <linux/seq_file.h>
+#include <linux/uaccess.h>
+#include <linux/io.h>
 
 #include "mcde_debugfs.h"
 
@@ -51,6 +54,52 @@ static struct mcde_info {
 	struct dentry *dentry;
 	struct channel_info channels[MAX_NUM_CHANNELS];
 } mcde;
+
+static int mcde_ovly_print(struct seq_file *s, void *p)
+{
+	struct mcde_ovly_state *ovly = s->private;
+
+	dev_info(mcde.dev, "%s: --- START ---\n", __func__);
+	mcde_hw_ovly_print(ovly);
+	dev_info(mcde.dev, "%s: --- END ---\n", __func__);
+	return 0;
+}
+
+static int mcde_dump_ovly_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, mcde_ovly_print, inode->i_private);
+}
+
+static const struct file_operations mcde_dump_ovly_fops = {
+	.open = mcde_dump_ovly_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+	.owner = THIS_MODULE,
+};
+
+static int mcde_chnl_print(struct seq_file *s, void *p)
+{
+	struct mcde_chnl_state *chnl = s->private;
+
+	dev_info(mcde.dev, "%s: --- START ---\n", __func__);
+	mcde_hw_chnl_print(chnl);
+	dev_info(mcde.dev, "%s: --- END ---\n", __func__);
+	return 0;
+}
+
+static int mcde_dump_chnl_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, mcde_chnl_print, inode->i_private);
+}
+
+static const struct file_operations mcde_dump_chnl_fops = {
+	.open = mcde_dump_chnl_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+	.owner = THIS_MODULE,
+};
 
 /* Requires: lhs > rhs */
 static inline u32 timespec_ms_diff(struct timespec lhs, struct timespec rhs)
@@ -152,7 +201,8 @@ int mcde_debugfs_channel_create(u8 chnl_id, struct mcde_chnl_state *chnl)
 		return -ENOMEM;
 
 	create_fps_files(ci->dentry, &ci->fps);
-
+	debugfs_create_file("dump_chnl", S_IRUGO, ci->dentry,
+						chnl, &mcde_dump_chnl_fops);
 	ci->fps.interval_ms = DEFAULT_DMESG_FPS_LOG_INTERVAL;
 	ci->id = chnl_id;
 	ci->chnl = chnl;
@@ -160,7 +210,8 @@ int mcde_debugfs_channel_create(u8 chnl_id, struct mcde_chnl_state *chnl)
 	return 0;
 }
 
-int mcde_debugfs_overlay_create(u8 chnl_id, u8 ovly_id)
+int mcde_debugfs_overlay_create(u8 chnl_id, u8 ovly_id,
+						struct mcde_ovly_state *ovly)
 {
 	struct channel_info *ci = find_chnl(chnl_id);
 	struct overlay_info *oi = find_ovly(ci, ovly_id);
@@ -177,7 +228,8 @@ int mcde_debugfs_overlay_create(u8 chnl_id, u8 ovly_id)
 		return -ENOMEM;
 
 	create_fps_files(oi->dentry, &oi->fps);
-
+	debugfs_create_file("dump_ovly", S_IRUGO, oi->dentry,
+						ovly, &mcde_dump_ovly_fops);
 	oi->fps.interval_ms = DEFAULT_DMESG_FPS_LOG_INTERVAL;
 	oi->id = ovly_id;
 

@@ -1,8 +1,9 @@
 /* drivers/video/mcde/display-r61529_dsi_seiko_rj248.c
  *
  * Copyright (C) 2011 Sony Ericsson Mobile Communications AB.
+ * Copyright (C) 2012 Sony Mobile Communications AB.
  *
- * Sony Ericsson Renesas 61529 driver for Seiko panel
+ * Sony Mobile Renesas 61529 driver for Seiko panel
  *
  * Author: Yantao Pan <yantao2.pan@sonyericsson.com>
  *
@@ -75,6 +76,39 @@ static const struct panel_reg standby_to_intermediate_cmds[] = {
 	{CMD_DCS, 0x2B, 4, {0x00, 0x00, 0x01, 0xDF} },
 
 	/* ...send pixel data ...*/
+
+	{CMD_END, 0, 1, {0} }
+};
+
+static const struct panel_reg on_to_standby_off_dbc_cmds[] = {
+	{CMD_DCS, DCS_CMD_SET_DISPLAY_OFF, 1, {0} },
+	{CMD_WAIT_MS, 0, 1, {21} }, /* Spec says > 20 ms */
+	{CMD_DCS, DCS_CMD_ENTER_SLEEP_MODE, 1, {0} },
+	{CMD_WAIT_MS, 0, 1, {101} }, /* Spec says > 100 ms */
+
+	{CMD_DCS, 0x34, 1, {0x00} }, /* TE off */
+	{CMD_END, 0, 1, {0} }
+};
+
+static const struct panel_reg standby_to_intermediate_off_dbc_cmds[] = {
+	{CMD_DCS, 0x35, 1, {0x00} }, /* TE on */
+
+	/* Spec: Exit Sleep */
+	{CMD_DCS, DCS_CMD_EXIT_SLEEP_MODE, 1,  {0} },
+	{CMD_WAIT_MS, 0, 1, {121} }, /* Spec says > 120 ms */
+
+	/*Off DBC function*/
+	{CMD_GEN, 0xB0, 1, {0x04} }, /* Access Protect */
+	{CMD_GEN, 0xB8, 1, {0x00} }, /* DBC off */
+	{CMD_GEN, 0xB9, 4, {0x00, 0xFF, 0x01, 0x18} }, /* LCD_PWM DBC off */
+
+	/*Update Image*/
+	{CMD_DCS, 0x2A, 4, {0x00, 0x00, 0x01, 0x3F} },
+	{CMD_DCS, 0x2B, 4, {0x00, 0x00, 0x01, 0xDF} },
+
+	/* ...send pixel data ...*/
+
+	{CMD_END, 0, 1, {0} }
 };
 
 static const struct panel_reg intermediate_to_on_cmds[] = {
@@ -106,6 +140,46 @@ static const u32 ddb_mask_alternative_rev35721A[] = {
 	DDB_END
 };
 
+static const u32 ddb_rev35721B[] = {
+	0x001B7235,
+	DDB_END
+};
+
+static const u32 ddb_mask_rev35721B[] = {
+	0xFFFFFFFF,
+	DDB_END
+};
+
+static const u32 ddb_rev35721C[] = {
+	0x001C7235,
+	DDB_END
+};
+
+static const u32 ddb_mask_rev35721C[] = {
+	0xFFFFFFFF,
+	DDB_END
+};
+
+static const u32 ddb_rev35721D[] = {
+	0x001D7235,
+	DDB_END
+};
+
+static const u32 ddb_mask_rev35721D[] = {
+	0xFFFFFFFF,
+	DDB_END
+};
+
+static const u32 ddb_rev357201[] = {
+	0x00017235,
+	DDB_END
+};
+
+static const u32 ddb_mask_rev357201[] = {
+	0xFFFFFFFF,
+	DDB_END
+};
+
 static const struct panel_reg id_regs[] = {
 	{CMD_END, 0, 1, {0} }
 };
@@ -117,6 +191,16 @@ static struct panel_controller r61529_controller_panel = {
 	.standby_to_deep_standby	= standby_to_deep_standby_cmds,
 	.on_to_standby			= on_to_standby_cmds,
 	.standby_to_intermediate	= standby_to_intermediate_cmds,
+	.intermediate_to_on		= intermediate_to_on_cmds,
+};
+
+static struct panel_controller r61529_controller_panel_off_dbc = {
+	.off_to_standby			= off_to_standby_cmds,
+	.deep_standby_to_standby	= deep_standby_to_standby_cmds,
+	.standby_to_off			= standby_to_off_cmds,
+	.standby_to_deep_standby	= standby_to_deep_standby_cmds,
+	.on_to_standby			= on_to_standby_off_dbc_cmds,
+	.standby_to_intermediate	= standby_to_intermediate_off_dbc_cmds,
 	.intermediate_to_on		= intermediate_to_on_cmds,
 };
 
@@ -168,6 +252,62 @@ const struct panel r61529_dsi_seiko_alternative_rev35721A = {
 	.ddb_mask = ddb_mask_alternative_rev35721A,
 	.id_regs = id_regs,
 	.pinfo = &r61529_controller_panel,
+	.x_res = 320,
+	.y_res = 480,
+	.width = 45,
+	.height = 67,
+	.custom_interface_init = custom_interface_init,
+	.custom_interface_remove = custom_interface_remove,
+};
+
+const struct panel r61529_dsi_seiko_rev35721B = {
+	.name = "Seiko DSI R61529 rev1B",
+	.ddb = ddb_rev35721B,
+	.ddb_mask = ddb_mask_rev35721B,
+	.id_regs = id_regs,
+	.pinfo = &r61529_controller_panel,
+	.x_res = 320,
+	.y_res = 480,
+	.width = 45,
+	.height = 67,
+	.custom_interface_init = custom_interface_init,
+	.custom_interface_remove = custom_interface_remove,
+};
+
+const struct panel r61529_dsi_seiko_rev35721C = {
+	.name = "Seiko DSI R61529 rev1C",
+	.ddb = ddb_rev35721C,
+	.ddb_mask = ddb_mask_rev35721C,
+	.id_regs = id_regs,
+	.pinfo = &r61529_controller_panel,
+	.x_res = 320,
+	.y_res = 480,
+	.width = 45,
+	.height = 67,
+	.custom_interface_init = custom_interface_init,
+	.custom_interface_remove = custom_interface_remove,
+};
+
+const struct panel r61529_dsi_seiko_rev35721D = {
+	.name = "Seiko DSI R61529 rev1D",
+	.ddb = ddb_rev35721D,
+	.ddb_mask = ddb_mask_rev35721D,
+	.id_regs = id_regs,
+	.pinfo = &r61529_controller_panel_off_dbc,
+	.x_res = 320,
+	.y_res = 480,
+	.width = 45,
+	.height = 67,
+	.custom_interface_init = custom_interface_init,
+	.custom_interface_remove = custom_interface_remove,
+};
+
+const struct panel r61529_dsi_seiko_rev357201 = {
+	.name = "Seiko DSI R61529 rev01",
+	.ddb = ddb_rev357201,
+	.ddb_mask = ddb_mask_rev357201,
+	.id_regs = id_regs,
+	.pinfo = &r61529_controller_panel_off_dbc,
 	.x_res = 320,
 	.y_res = 480,
 	.width = 45,

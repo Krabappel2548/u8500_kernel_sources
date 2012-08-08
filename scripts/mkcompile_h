@@ -65,7 +65,7 @@ UTS_TRUNCATE="cut -b -$UTS_LEN"
 
   if [ -z "$KBUILD_BUILD_TIMESTAMP" ]; then
 	echo \#define LINUX_COMPILE_TIME \"`date +%T`\"
-	echo \#define LINUX_COMPILE_BY \"`krabappel2548`\"
+	echo \#define LINUX_COMPILE_BY \"`whoami`\"
 	echo \#define LINUX_COMPILE_HOST \"`hostname | $UTS_TRUNCATE`\"
   else
 	echo \#define LINUX_COMPILE_TIME \"`date --date="$TIMESTAMP" +%R:%S`\"
